@@ -23,7 +23,6 @@ class Client(TypedDict):
     inn: str
 
 
-settings = json.load(open(os.path.join(os.path.expanduser("~"), ".config", "Probivaka", "settings.json"),"r"))
 
 
 def wait_ofd(fptr: IFptr):
@@ -380,6 +379,14 @@ def check_already(cur: sqlite3.Cursor, doc):
 
 
 def main():
+    settings_path =os.path.join(os.path.expanduser("~"), ".config", "Probivaka", "settings.json")
+    try:
+        with  open(settings_path,"r") as fp:
+            settings = json.load( fp )
+    except Exception as e:
+        logging.critical("Создайте файл настроек '%s' !", settings_path)
+        raise e
+
     parser = argparse.ArgumentParser(description="Пробивка банковских выписок")
     parser.add_argument("-a", "--askopen", action="store_true")
 
