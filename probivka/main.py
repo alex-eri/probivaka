@@ -393,6 +393,7 @@ def detect_cp(file_path):
                 break
     if not cp:
         raise Exception("BadFormat: Codepage")
+    return cp
 
 
 def loadcsv(file_path, settings):
@@ -541,7 +542,6 @@ def main():
         for mb in settings.get("mailboxes", []):
             file_paths += mail.fetchmail(mb)
 
-    
     done = []
     undone = []
 
@@ -550,12 +550,11 @@ def main():
             loadcsv(file_path, settings)
         except Exception as e:
             logging.error(e)
-            os.rename(file_path, "error-"+file_path)
-            undone.append("error-"+file_path)
+            os.rename(file_path, file_path + ".error")
+            undone.append("error-" + file_path)
         else:
-            os.rename(file_path, "done-"+file_path)
-            done.append("done-"+file_path)
-        break
+            os.rename(file_path, file_path + ".done")
+            done.append("done-" + file_path)
 
     if undone:
         logging.warning("Файлы с ошибками: %s", repr(undone))
