@@ -396,7 +396,7 @@ def detect_cp(file_path):
     return cp
 
 
-def loadcsv(file_path, settings):
+def loadcsv(file_path, settings, ask=True):
     lsmatch = re.compile(r"(\D|^)(2\d{8})(\D|$)")
 
     logging.warning("=== Загрузка %s ===", file_path)
@@ -530,6 +530,7 @@ def main():
     parser = argparse.ArgumentParser(description="Пробивка банковских выписок")
     parser.add_argument("-a", "--askopen", action="store_true")
     parser.add_argument("-e", "--email", action="store_true")
+    parser.add_argument("-y", "--yes", action="store_true")
 
     args = parser.parse_args()
 
@@ -542,19 +543,23 @@ def main():
         for mb in settings.get("mailboxes", []):
             file_paths += mail.fetchmail(mb)
 
+    ask = True
+    if args.yes:
+        ask = False
+
     done = []
     undone = []
 
     for file_path in file_paths:
         try:
-            loadcsv(file_path, settings)
+            loadcsv(file_path, settings, ask=ask)
         except Exception as e:
             logging.error(e)
             os.rename(file_path, file_path + ".error")
-            undone.append("error-" + file_path)
+            undone.append(file_path+ ".error")
         else:
             os.rename(file_path, file_path + ".done")
-            done.append("done-" + file_path)
+            done.append(file_path+ ".done")
 
     if undone:
         logging.warning("Файлы с ошибками: %s", repr(undone))
