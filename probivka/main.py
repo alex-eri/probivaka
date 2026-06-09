@@ -486,9 +486,10 @@ def loadcsv(file_path, settings, ask=True):
                     sep="\t",
                 )
 
-            yesno = input("\n\nПробиваем?")
-            if yesno.lower().strip() not in ["да", "д", "y", "yes"]:
-                continue
+            if ask:
+                yesno = input("\n\nПробиваем?")
+                if yesno.lower().strip() not in ["да", "д", "y", "yes"]:
+                    continue
 
             logging.info("Подключаю кассу")
             with connection(setting) as con, db() as cur:
