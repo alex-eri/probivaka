@@ -1,5 +1,5 @@
 from io import TextIOWrapper
-from libfptr10 import IFptr
+from .libfptr10 import IFptr
 import re
 import sqlite3
 import os
@@ -16,13 +16,12 @@ import logging
 import time
 import codecs
 import argparse
+from . import mail
 
 
 class Client(TypedDict):
     name: str
     inn: str
-
-
 
 
 def wait_ofd(fptr: IFptr):
@@ -214,8 +213,7 @@ def db() -> Generator[sqlite3.Cursor, None, None]:
 
     cur = con.cursor()
 
-    cur.execute(
-        """
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS Чеки (
             id INTEGER PRIMARY KEY,
             ПолучательИНН TEXT, 
@@ -228,8 +226,7 @@ def db() -> Generator[sqlite3.Cursor, None, None]:
             ЛицевойСчёт TEXT,
             Чек TEXT
         )
-    """
-    )
+    """)
 
     yield cur
     con.commit()
@@ -378,120 +375,81 @@ def check_already(cur: sqlite3.Cursor, doc):
     return doc["Чек"]
 
 
-def main():
-    settings_path =os.path.join(os.path.expanduser("~"), ".config", "Probivaka", "settings.json")
-    try:
-        with  open(settings_path,"r") as fp:
-            settings = json.load( fp )
-    except Exception as e:
-        logging.critical("Создайте файл настроек '%s' !", settings_path)
-        raise e
+def detect_cp(file_path):
+    cp = None
+    with open(file_path, "rb") as fb:
+        for line in fb:
+            if b"=" not in line:
+                continue
+            k, v = line.split(b"=")
+            if v.strip().upper() == b"Windows".upper():
+                cp = "cp1251"
+                break
+            if v.strip().upper() == b"DOS".upper():
+                cp = "cp866"
+                break
+            if v.strip().upper() == b"UTF-8".upper():
+                cp = "utf_8"
+                break
+    if not cp:
+        raise Exception("BadFormat: Codepage")
 
-    parser = argparse.ArgumentParser(description="Пробивка банковских выписок")
-    parser.add_argument("-a", "--askopen", action="store_true")
 
-    args = parser.parse_args()
-
-    file_paths = []
-
-    if args.askopen:
-        file_paths += get_kl_to_1c()
-
+def loadcsv(file_path, settings):
     lsmatch = re.compile(r"(\D|^)(2\d{8})(\D|$)")
 
-    for file_path in file_paths:
+    logging.warning("=== Загрузка %s ===", file_path)
 
-        logging.warning("=== Загрузка %s ===", file_path)
+    meta = {}
+    docs = []
 
-        meta = {}
-        docs = []
-        cp = None
-        with open(file_path, "rb") as fb:
-            for line in fb:
-                if b"=" not in line:
-                    continue
-                k, v = line.split(b"=")
-                if v.strip().upper() == b"Windows".upper():
-                    cp = "cp1251"
-                    break
-                if v.strip().upper() == b"DOS".upper():
-                    cp = "cp866"
-                    break
-                if v.strip().upper() == b"UTF-8".upper():
-                    cp = "utf_8"
-                    break
-        if not cp:
-            continue
+    cp = detect_cp(file_path)
 
-        with codecs.open(file_path, "r", cp) as f:
-            meta, docs = parse_kl_to_1cf(f)
+    with codecs.open(file_path, "r", cp) as f:
+        meta, docs = parse_kl_to_1cf(f)
 
-        recipients = set()
+    recipients = set()
 
-        for doc in docs:
-            # if len(doc["ПлательщикИНН"]) != 12:
-            #     continue
+    for doc in docs:
+        # if len(doc["ПлательщикИНН"]) != 12:
+        #     continue
 
-            np = doc["НазначениеПлатежа"]
-            lssearch = lsmatch.search(np)
+        np = doc["НазначениеПлатежа"]
+        lssearch = lsmatch.search(np)
 
-            if lssearch:
-                doc["ЛицевойСчёт"] = lssearch.groups()[1]
-                # print(doc["ЛицевойСчёт"])
-            # else:
-            #     print(
-            #         doc["НазначениеПлатежа"],
-            #         sep="\t",
-            #     )
+        if lssearch:
+            doc["ЛицевойСчёт"] = lssearch.groups()[1]
+            # print(doc["ЛицевойСчёт"])
+        # else:
+        #     print(
+        #         doc["НазначениеПлатежа"],
+        #         sep="\t",
+        #     )
 
-            recipients.add(doc["ПолучательИНН"])
+        recipients.add(doc["ПолучательИНН"])
 
-        logging.warning("=== Пробивка ===")
+    logging.warning("=== Пробивка ===")
 
-        for rct in recipients:
-            rctdocs = list(
-                filter(
-                    lambda x: (
-                        x["ПолучательИНН"] == rct
-                        and x["ПолучательИНН"] != x["ПлательщикИНН"]
-                        and (
-                            x["ПлательщикИНН"] == ""
-                            or x["ПлательщикИНН"] == "0"
-                            or len(x["ПлательщикИНН"]) == 12
-                        )
-                    ),
-                    docs,
-                )
-            )
-
-            if setting := settings.get(rct):
-                logging.warning("Документов: %s", len(rctdocs))
-
-                with db() as cur:
-
-                    for doc in rctdocs:
-                        print(
-                            doc["ДатаПоступило"],
-                            f'\033[31m{doc["Сумма"]}\033[0m',
-                            doc["Плательщик1"],
-                            f'\033[32m{doc.get("ЛицевойСчёт", "!!!")}\033[0m',
-                            doc["НазначениеПлатежа"],
-                            sep="\t",
-                            end="\t",
-                        )
-                        if check_already(cur, doc):
-                            print("✅", doc["Чек"]["i"])
-                        else:
-                            print("☐")
-
-                rctdocs = list(
-                    filter(
-                        lambda x: not x.get('Чек'),
-                        rctdocs,
+    for rct in recipients:
+        rctdocs = list(
+            filter(
+                lambda x: (
+                    x["ПолучательИНН"] == rct
+                    and x["ПолучательИНН"] != x["ПлательщикИНН"]
+                    and (
+                        x["ПлательщикИНН"] == ""
+                        or x["ПлательщикИНН"] == "0"
+                        or len(x["ПлательщикИНН"]) == 12
                     )
-                )
+                ),
+                docs,
+            )
+        )
 
-                logging.warning("Документов не пробито: %s", len(rctdocs))
+        if setting := settings.get(rct):
+            logging.warning("Документов: %s", len(rctdocs))
+
+            with db() as cur:
 
                 for doc in rctdocs:
                     print(
@@ -501,36 +459,106 @@ def main():
                         f'\033[32m{doc.get("ЛицевойСчёт", "!!!")}\033[0m',
                         doc["НазначениеПлатежа"],
                         sep="\t",
+                        end="\t",
                     )
+                    if check_already(cur, doc):
+                        print("✅", doc["Чек"]["i"])
+                    else:
+                        print("☐")
 
-                yesno = input("\n\nПробиваем?")
-                if yesno.lower().strip() not in ["да", "д", "y", "yes"]:
-                    continue
+            rctdocs = list(
+                filter(
+                    lambda x: not x.get("Чек"),
+                    rctdocs,
+                )
+            )
 
-                logging.info("Подключаю кассу")
-                with connection(setting) as con, db() as cur:
-                    logging.info("Открываю смену")
-                    with shift(con) as s:
-                        logging.info("Пробиваю приход")
-                        for doc in rctdocs:
-                            print(
-                                doc["ДатаПоступило"],
-                                f'\033[31m{doc["Сумма"]}\033[0m',
-                                (
-                                    f'\033[32m{doc.get("ЛицевойСчёт")}\033[0m'
-                                    if doc.get("ЛицевойСчёт")
-                                    else doc["НазначениеПлатежа"]
-                                ),
-                                sep="\t",
-                                end="\t",
-                            )
-                            if doc.get("Чек"):
-                                print("🔢", doc["Чек"]["i"])
-                            else:
-                                sell(s, cur, doc)
-                                print("✅", doc["Чек"]["i"])
+            logging.warning("Документов не пробито: %s", len(rctdocs))
 
-        logging.warning("=== Конец пробивки ===")
+            for doc in rctdocs:
+                print(
+                    doc["ДатаПоступило"],
+                    f'\033[31m{doc["Сумма"]}\033[0m',
+                    doc["Плательщик1"],
+                    f'\033[32m{doc.get("ЛицевойСчёт", "!!!")}\033[0m',
+                    doc["НазначениеПлатежа"],
+                    sep="\t",
+                )
+
+            yesno = input("\n\nПробиваем?")
+            if yesno.lower().strip() not in ["да", "д", "y", "yes"]:
+                continue
+
+            logging.info("Подключаю кассу")
+            with connection(setting) as con, db() as cur:
+                logging.info("Открываю смену")
+                with shift(con) as s:
+                    logging.info("Пробиваю приход")
+                    for doc in rctdocs:
+                        print(
+                            doc["ДатаПоступило"],
+                            f'\033[31m{doc["Сумма"]}\033[0m',
+                            (
+                                f'\033[32m{doc.get("ЛицевойСчёт")}\033[0m'
+                                if doc.get("ЛицевойСчёт")
+                                else doc["НазначениеПлатежа"]
+                            ),
+                            sep="\t",
+                            end="\t",
+                        )
+                        if doc.get("Чек"):
+                            print("🔢", doc["Чек"]["i"])
+                        else:
+                            sell(s, cur, doc)
+                            print("✅", doc["Чек"]["i"])
+
+    logging.warning("=== Конец пробивки ===")
+
+
+def main():
+    settings_path = os.path.join(
+        os.path.expanduser("~"), ".config", "Probivaka", "settings.json"
+    )
+    try:
+        with open(settings_path, "r") as fp:
+            settings = json.load(fp)
+    except Exception as e:
+        logging.critical("Создайте файл настроек '%s' !", settings_path)
+        raise e
+
+    parser = argparse.ArgumentParser(description="Пробивка банковских выписок")
+    parser.add_argument("-a", "--askopen", action="store_true")
+    parser.add_argument("-e", "--email", action="store_true")
+
+    args = parser.parse_args()
+
+    file_paths = []
+
+    if args.askopen:
+        file_paths += get_kl_to_1c()
+
+    if args.email:
+        for mb in settings.get("mailboxes", []):
+            file_paths += mail.fetchmail(mb)
+
+    
+    done = []
+    undone = []
+
+    for file_path in file_paths:
+        try:
+            loadcsv(file_path, settings)
+        except Exception as e:
+            logging.error(e)
+            os.rename(file_path, "error-"+file_path)
+            undone.append("error-"+file_path)
+        else:
+            os.rename(file_path, "done-"+file_path)
+            done.append("done-"+file_path)
+        break
+
+    if undone:
+        logging.warning("Файлы с ошибками: %s", repr(undone))
 
 
 if __name__ == "__main__":
