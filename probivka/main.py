@@ -532,10 +532,14 @@ def main():
     parser.add_argument("-a", "--askopen", action="store_true")
     parser.add_argument("-e", "--email", action="store_true")
     parser.add_argument("-y", "--yes", action="store_true")
+    parser.add_argument('-f', '--files', nargs='+')
 
     args = parser.parse_args()
 
     file_paths = []
+
+    if args.files:
+        file_paths += args.files
 
     if args.askopen:
         file_paths += get_kl_to_1c()
