@@ -519,13 +519,15 @@ def loadcsv(file_path, settings, ask=True):
     logging.warning("=== Конец пробивки ===")
     return docs
 
-def do_report(docs):
+def do_report(docss):
+
     fd, name = tempfile.mkstemp(suffix='.csv',prefix='report')
-    unique_keys = list({key for dictionary in docs for key in dictionary.keys()})
+    unique_keys = list({key for docs in docss for dictionary in docs for key in dictionary.keys()})
     with os.fdopen(fd, 'w') as f:
         writer = csv.DictWriter(f, fieldnames=unique_keys)
         writer.writeheader()
-        writer.writerows(docs)
+        for docs in docss:
+            writer.writerows(docs)
 
     subprocess.run(["xdg-open", name], capture_output=True)
 
