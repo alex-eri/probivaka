@@ -521,7 +521,7 @@ def loadcsv(file_path, settings, ask=True):
 
 def do_report(docs):
     fd, name = tempfile.mkstemp(suffix='.csv',prefix='report')
-    unique_keys = list({key for dictionary in docs for key in dictionary})
+    unique_keys = list({key for dictionary in docs for key in dictionary.keys()})
     with os.fdopen(fd, 'w') as f:
         writer = csv.DictWriter(f, fieldnames=unique_keys)
         writer.writeheader()
