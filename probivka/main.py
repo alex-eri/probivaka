@@ -17,7 +17,9 @@ import time
 import codecs
 import argparse
 from . import mail
-
+import csv
+import tempfile
+import subprocess
 
 class Client(TypedDict):
     name: str
@@ -515,6 +517,18 @@ def loadcsv(file_path, settings, ask=True):
                             print("✅", doc["Чек"]["i"])
 
     logging.warning("=== Конец пробивки ===")
+    return docs
+
+def do_report(docs):
+    fd, name = tempfile.mkstemp(suffix='.csv',prefix='report')
+    unique_keys = list({key for dictionary in docs for key in dictionary})
+    with os.fdopen(fd, 'w') as f:
+        writer = csv.DictWriter(f, fieldnames=unique_keys)
+        writer.writeheader()
+        writer.writerows(docs)
+
+    subprocess.run(["xdg-open", name], capture_output=True)
+
 
 
 def main():
@@ -532,6 +546,7 @@ def main():
     parser.add_argument("-a", "--askopen", action="store_true")
     parser.add_argument("-e", "--email", action="store_true")
     parser.add_argument("-y", "--yes", action="store_true")
+    parser.add_argument("-r", "--report", action="store_true")
     parser.add_argument('-f', '--files', nargs='+')
 
     args = parser.parse_args()
@@ -555,9 +570,11 @@ def main():
     done = []
     undone = []
 
+    docs = []
+
     for file_path in file_paths:
         try:
-            loadcsv(file_path, settings, ask=ask)
+            docs.append(loadcsv(file_path, settings, ask=ask))
         except Exception as e:
             logging.error(e)
             os.rename(file_path, file_path + ".error")
@@ -569,6 +586,10 @@ def main():
     if undone:
         logging.warning("Файлы с ошибками: %s", repr(undone))
 
+    if args.report:
+        do_report(docs)
+
+    time.sleep(60)
 
 if __name__ == "__main__":
     main()

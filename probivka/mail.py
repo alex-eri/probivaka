@@ -62,6 +62,6 @@ def fetchmail(mailbox :MailboxConfig):
                                 name = os.path.join(savepath,fn)
                                 with open(name, 'wb') as f:
                                     f.write(file_content)
-                                    logging.info('Saved: %s/%s', name )
+                                    logging.info('Saved: %s', name )
                                     ret.append(name)
     return ret
