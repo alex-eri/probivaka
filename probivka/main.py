@@ -523,8 +523,9 @@ def do_report(docss):
 
     fd, name = tempfile.mkstemp(suffix='.csv',prefix='report')
     unique_keys = list({key for docs in docss for dictionary in docs for key in dictionary.keys()})
+    logging.warning(name)
     with os.fdopen(fd, 'w') as f:
-        writer = csv.DictWriter(f, fieldnames=unique_keys)
+        writer = csv.DictWriter(f, fieldnames=unique_keys, quoting=csv.QUOTE_ALL)
         writer.writeheader()
         for docs in docss:
             writer.writerows(docs)
