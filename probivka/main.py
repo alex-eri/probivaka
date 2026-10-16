@@ -20,6 +20,8 @@ from . import mail
 import csv
 import tempfile
 import subprocess
+import traceback
+
 
 class Client(TypedDict):
     name: str
@@ -580,6 +582,7 @@ def main():
             docs.append(loadcsv(file_path, settings, ask=ask))
         except Exception as e:
             logging.error(e)
+            traceback.print_tb(e.__traceback__)
             os.rename(file_path, file_path + ".error")
             undone.append(file_path+ ".error")
         else:
